@@ -35,6 +35,7 @@ def __get_hash_magnet(mgt: str):
     if len(hash_) == 32:
         hash_ = b16encode(b32decode(hash_.upper())).decode()
     return str(hash_)
+
 def __get_hash_file(path):
     with open(path, "rb") as f:
         decodedDict = bdecode(f.read())
@@ -43,7 +44,7 @@ def __get_hash_file(path):
 """
 
 async def add_qb_torrent(link, path, listener, ratio, seed_time):
-    client = get_client()
+    client = await sync_to_async(get_client)
     ADD_TIME = time()
     try:
         url = link
@@ -63,13 +64,11 @@ async def add_qb_torrent(link, path, listener, ratio, seed_time):
                     elif time() - ADD_TIME >= 120:
                         msg = "Not added! Check if the link is valid or not. If it's torrent file then report, this happens if torrent file size above 10mb."
                         await sendMessage(listener.message, msg)
-                        await sync_to_async(client.auth_log_out)
                         return
             tor_info = tor_info[0]
             ext_hash = tor_info.hash
             if await getDownloadByGid(ext_hash[:12]):
                 await sendMessage(listener.message, "This Torrent already added!")
-                await sync_to_async(client.auth_log_out)
                 return
         else:
             await sendMessage(listener.message, "This is an unsupported/invalid link.")
@@ -98,10 +97,11 @@ async def add_qb_torrent(link, path, listener, ratio, seed_time):
                             await deleteMessage(meta)
                             break
                     except:
-                        return await deleteMessage(meta)
+                        await deleteMessage(meta)
+                        return
             await sync_to_async(client.torrents_pause, torrent_hashes=ext_hash)
             SBUTTONS = bt_selection_buttons(ext_hash)
-            msg = f"<b>Name</b>: <code>{tor_info.name}</code>\n\nYour download paused. Choose files then press Done Selecting button to start downloading."             "\n<b><i>Your download will not start automatically</i></b>"
+            msg = f"<b>Name</b>: <code>{tor_info.name}</code>\n\nYour download paused. Choose files then press Done Selecting button to start downloading.\n<b><i>Your download will not start automatically</i></b>"
             await sendMessage(listener.message, msg, SBUTTONS)
         else:
             await sendStatusMessage(listener.message)
@@ -112,7 +112,7 @@ async def add_qb_torrent(link, path, listener, ratio, seed_time):
             await aioremove(link)
         await sync_to_async(client.auth_log_out)
 
-async def __remove_torrent(client, hash_):
+async def __remove_torrent(client, hash_, tag):
     await sync_to_async(client.torrents_delete, torrent_hashes=hash_, delete_files=True)
     async with qb_download_lock:
         if hash_ in STALLED_TIME:
@@ -127,34 +127,34 @@ async def __remove_torrent(client, hash_):
             SEEDING.remove(hash_)
         if hash_ in SIZE_CHECKED:
             SIZE_CHECKED.remove(hash_)
+    await sync_to_async(client.torrents_delete_tags, tags=tag)
+    await sync_to_async(client.auth_log_out)
 
-async def __onDownloadError(err, client, tor, button=None):
+async def __onDownloadError(err, tor, button=None):
+    client = await sync_to_async(get_client)
     LOGGER.info(f"Cancelling Download: {tor.name}")
     await sync_to_async(client.torrents_pause, torrent_hashes=tor.hash)
     await sleep(0.3)
     download = await getDownloadByGid(tor.hash[:12])
-    try:
+    if hasattr(download, 'listener'):
         listener = download.listener()
         await listener.onDownloadError(err, button)
-    except:
-        pass
-    await __remove_torrent(client, tor.hash)
+    await __remove_torrent(client, tor.hash, tor.tags)
 
 @new_task
-async def __onSeedFinish(client, tor):
+async def __onSeedFinish(tor):
+    client = await sync_to_async(get_client)
     LOGGER.info(f"Cancelling Seed: {tor.name}")
     download = await getDownloadByGid(tor.hash[:12])
-    try:
+    if hasattr(download, 'listener'):
         listener = download.listener()
         await listener.onUploadError(f"Seeding stopped with Ratio: {round(tor.ratio, 3)} and Time: {get_readable_time(tor.seeding_time)}")
-    except:
-        pass
     await __remove_torrent(client, tor.hash)
 
 @new_task
-async def __stop_duplicate(client, tor):
+async def __stop_duplicate(tor):
     download = await getDownloadByGid(tor.hash[:12])
-    try:
+    if hasattr(download, 'listener'):
         listener = download.listener()
         if not listener.select and not listener.isLeech:
             LOGGER.info('Checking File/Folder if already in Drive')
@@ -169,23 +169,16 @@ async def __stop_duplicate(client, tor):
             if qbname:
                 qbmsg, button = await sync_to_async(GoogleDriveHelper().drive_list, qbname, True)
                 if qbmsg:
+                    qbmsg = 'File/Folder is already available in Drive.\nHere are the search results: '
                     await delete_links(listener.message)
-                    await __onDownloadError("File/Folder is already available in Drive.\nHere are the search results:\n", client, tor, button)
-    except:
-        pass
+                    await __onDownloadError(qbmsg, tor, button)
 
-async def __size_checked(client, tor):
+async def __size_checked(tor):
     download = await getDownloadByGid(tor.hash[:12])
-    try:
+    if hasattr(download, 'listener'):
         listener = download.listener()
         size = tor.size
         limit_exceeded = ''
-        if not limit_exceeded and (STORAGE_THRESHOLD:= config_dict['STORAGE_THRESHOLD']):
-            limit = STORAGE_THRESHOLD * 1024**3
-            arch = any([listener.isZip, listener.extract])
-            acpt = await sync_to_async(check_storage_threshold, size, limit, arch)
-            if not acpt:
-                limit_exceeded = f'You must leave {get_readable_file_size(limit)} free storage.'
         if not limit_exceeded and (TORRENT_LIMIT:= config_dict['TORRENT_LIMIT']):
             limit = TORRENT_LIMIT * 1024**3
             if size > limit:
@@ -194,15 +187,20 @@ async def __size_checked(client, tor):
             limit = LEECH_LIMIT * 1024**3
             if size > limit:
                 limit_exceeded = f'Leech limit is {get_readable_file_size(limit)}'
+        if not limit_exceeded and (STORAGE_THRESHOLD:= config_dict['STORAGE_THRESHOLD']):
+            arch = any([listener.isZip, listener.extract])
+            limit = STORAGE_THRESHOLD * 1024**3
+            acpt = await sync_to_async(check_storage_threshold, size, limit, arch)
+            if not acpt:
+                limit_exceeded = f'You must leave {get_readable_file_size(limit)} free storage.'
         if limit_exceeded:
             await delete_links(listener.message)
             fmsg = f"{limit_exceeded}.\nYour File/Folder size is {get_readable_file_size(size)}"
-            await __onDownloadError(fmsg, client, tor)
-    except:
-        pass
+            await __onDownloadError(fmsg, tor)
 
 @new_task
-async def __onDownloadComplete(client, tor):
+async def __onDownloadComplete(tor):
+    client = await sync_to_async(get_client)
     await sleep(2)
     download = await getDownloadByGid(tor.hash[:12])
     try:
@@ -222,21 +220,23 @@ async def __onDownloadComplete(client, tor):
             else:
                 removed = True
         if removed:
-            await __remove_torrent(client, tor.hash)
+            await __remove_torrent(client, tor.hash, tor.tags)
             return
         async with qb_download_lock:
             SEEDING.add(tor.hash)
         await update_all_messages()
         LOGGER.info(f"Seeding started: {tor.name} - Hash: {tor.hash}")
+        await sync_to_async(client.auth_log_out)
     else:
-        await __remove_torrent(client, tor.hash)
+        await __remove_torrent(client, tor.hash, tor.tags)
 
 async def __qb_listener():
-    client = get_client()
+    client = await sync_to_async(get_client)
     async with qb_download_lock:
         if len(await sync_to_async(client.torrents_info)) == 0:
             QbInterval[0].cancel()
             QbInterval.clear()
+            await sync_to_async(client.auth_log_out)
             return
         try:
             for tor_info in await sync_to_async(client.torrents_info):
@@ -244,18 +244,18 @@ async def __qb_listener():
                     TORRENT_TIMEOUT = config_dict['TORRENT_TIMEOUT']
                     STALLED_TIME[tor_info.hash] = time()
                     if TORRENT_TIMEOUT and time() - tor_info.added_on >= TORRENT_TIMEOUT:
-                        bot_loop.create_task(__onDownloadError("Dead Torrent! Find Torrent with good Seeders.", client, tor_info))
+                        bot_loop.create_task(__onDownloadError("Dead Torrent! Find Torrent with good Seeders.", tor_info))
                     else:
                         await sync_to_async(client.torrents_reannounce, torrent_hashes=tor_info.hash)
                 elif tor_info.state == "downloading":
                     STALLED_TIME[tor_info.hash] = time()
                     if config_dict['STOP_DUPLICATE'] and tor_info.hash not in STOP_DUP_CHECK:
                         STOP_DUP_CHECK.add(tor_info.hash)
-                        __stop_duplicate(client, tor_info)
+                        __stop_duplicate(tor_info)
                     if tor_info.hash not in SIZE_CHECKED and any([config_dict['STORAGE_THRESHOLD'],config_dict['TORRENT_LIMIT'],
                                                                 config_dict['LEECH_LIMIT']]):
                         SIZE_CHECKED.add(tor_info.hash)
-                        bot_loop.create_task(__size_checked(client, tor_info))
+                        bot_loop.create_task(__size_checked(tor_info))
                 elif tor_info.state == "stalledDL":
                     TORRENT_TIMEOUT = config_dict['TORRENT_TIMEOUT']
                     if tor_info.hash not in RECHECKED and 0.99989999999999999 < tor_info.progress < 1:
@@ -263,21 +263,24 @@ async def __qb_listener():
                         msg += f"{tor_info.hash} Downloaded Bytes: {tor_info.downloaded} "
                         msg += f"Size: {tor_info.size} Total Size: {tor_info.total_size}"
                         LOGGER.error(msg)
-                        client.torrents_recheck(torrent_hashes=tor_info.hash)
+                        await sync_to_async(client.torrents_recheck, torrent_hashes=tor_info.hash)
                         RECHECKED.add(tor_info.hash)
                     elif TORRENT_TIMEOUT and time() - STALLED_TIME.get(tor_info.hash, 0) >= TORRENT_TIMEOUT:
-                        bot_loop.create_task(__onDownloadError("Dead Torrent! Find Torrent with good Seeders.", client, tor_info))
+                        bot_loop.create_task(__onDownloadError("Dead Torrent! Find Torrent with good Seeders.", tor_info))
                     else:
                         await sync_to_async(client.torrents_reannounce, torrent_hashes=tor_info.hash)
                 elif tor_info.state == "missingFiles":
                     await sync_to_async(client.torrents_recheck, torrent_hashes=tor_info.hash)
                 elif tor_info.state == "error":
-                    bot_loop.create_task(__onDownloadError("No enough space for this torrent on device", client, tor_info))
-                elif tor_info.completion_on != 0 and tor_info.hash not in UPLOADED and                   tor_info.state not in ['checkingUP', 'checkingDL', 'checkingResumeData']:
+                    bot_loop.create_task(__onDownloadError("No enough space for this torrent on device", tor_info))
+                elif tor_info.completion_on != 0 and tor_info.hash not in UPLOADED and \
+                    tor_info.state not in ['checkingUP', 'checkingDL', 'checkingResumeData']:
                     UPLOADED.add(tor_info.hash)
-                    __onDownloadComplete(client, tor_info)
+                    __onDownloadComplete(tor_info)
                 elif tor_info.state in ['pausedUP', 'pausedDL'] and tor_info.hash in SEEDING:
                     SEEDING.remove(tor_info.hash)
-                    __onSeedFinish(client, tor_info)
+                    __onSeedFinish(tor_info)
         except Exception as e:
             LOGGER.error(str(e))
+        finally:
+            await sync_to_async(client.auth_log_out)

@@ -27,8 +27,8 @@ setdefaulttimeout(600)
 
 botStartTime = time()
 
-basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                    handlers=[FileHandler('log.txt'), StreamHandler()],
+basicConfig(format='%(asctime)s | %(name)s | %(levelname)s | %(message)s',
+                    handlers=[FileHandler('Z_Logs.txt'), StreamHandler()],
                     level=INFO)
 
 LOGGER = getLogger(__name__)
@@ -158,8 +158,7 @@ USER_SESSION_STRING = environ.get('USER_SESSION_STRING', '')
 if len(USER_SESSION_STRING) != 0:
     info("Creating client from USER_SESSION_STRING")
     user = tgClient('user', TELEGRAM_API, TELEGRAM_HASH, session_string=USER_SESSION_STRING,
-                    parse_mode=enums.ParseMode.HTML, no_updates=True)
-    user.start()
+                    parse_mode=enums.ParseMode.HTML, no_updates=True).start()
     if user.me.is_bot:
         log_warning("You added bot string for USER_SESSION_STRING this is not allowed! Exiting now")
         user.stop()
@@ -169,13 +168,11 @@ if len(USER_SESSION_STRING) != 0:
 
 MEGA_API_KEY = environ.get('MEGA_API_KEY', '')
 if len(MEGA_API_KEY) == 0:
-    warning('MEGA API KEY not provided!')
     MEGA_API_KEY = ''
 
 MEGA_EMAIL_ID = environ.get('MEGA_EMAIL_ID', '')
 MEGA_PASSWORD = environ.get('MEGA_PASSWORD', '')
 if len(MEGA_EMAIL_ID) == 0 or len(MEGA_PASSWORD) == 0:
-    warning('MEGA Credentials not provided!')
     MEGA_EMAIL_ID = ''
     MEGA_PASSWORD = ''
 
@@ -233,7 +230,7 @@ LOG_CHAT = environ.get('LOG_CHAT', '')
 LOG_CHAT = '' if len(LOG_CHAT) == 0 else int(LOG_CHAT)
 
 STATUS_LIMIT = environ.get('STATUS_LIMIT', '')
-STATUS_LIMIT = '' if len(STATUS_LIMIT) == 0 else int(STATUS_LIMIT)
+STATUS_LIMIT = 5 if len(STATUS_LIMIT) == 0 else int(STATUS_LIMIT)
 
 USER_MAX_TASKS = environ.get('USER_MAX_TASKS', '')
 USER_MAX_TASKS = '' if len(USER_MAX_TASKS) == 0 else int(USER_MAX_TASKS)
@@ -294,6 +291,7 @@ else:
 BASE_URL = environ.get('BASE_URL', '').rstrip("/")
 if len(BASE_URL) == 0:
     warning('BASE_URL not provided!')
+    info('Torrent select wont work.')
     BASE_URL = ''
 
 UPSTREAM_REPO = environ.get('UPSTREAM_REPO', '')
@@ -342,6 +340,9 @@ DISABLE_LEECH = DISABLE_LEECH.lower() == 'true'
 
 SET_COMMANDS = environ.get('SET_COMMANDS', '')
 SET_COMMANDS = SET_COMMANDS.lower() == 'true'
+
+REQUEST_LIMITS = environ.get('REQUEST_LIMITS', '')
+REQUEST_LIMITS = '' if len(REQUEST_LIMITS) == 0 else max(int(REQUEST_LIMITS), 5)
 
 DM_MODE = environ.get('DM_MODE', '')
 DM_MODE = DM_MODE.lower() if DM_MODE.lower() in ['leech', 'mirror', 'all'] else ''
@@ -415,6 +416,7 @@ config_dict = {'AS_DOCUMENT': AS_DOCUMENT,
                 'DISABLE_DRIVE_LINK': DISABLE_DRIVE_LINK,
                 'SET_COMMANDS': SET_COMMANDS,
                 'DISABLE_LEECH': DISABLE_LEECH,
+                'REQUEST_LIMITS':REQUEST_LIMITS,
                 'DM_MODE': DM_MODE,
                 'DELETE_LINKS': DELETE_LINKS}
 
@@ -476,6 +478,8 @@ if path.exists('categories.txt'):
 PORT = environ.get('PORT')
 Popen(f"gunicorn web.wserver:app --bind 0.0.0.0:{PORT}", shell=True)
 alive = Popen(["python3", "alive.py"])
+
+info("Starting qBittorrent-Nox")
 run(["qbittorrent-nox", "-d", "--profile=."])
 if not path.exists('.netrc'):
     with open('.netrc', 'w'):
@@ -496,7 +500,7 @@ def get_client():
 
 def aria2c_init():
     try:
-        info("Initializing Aria2c")
+        info("Starting Aria2c")
         link = "https://linuxmint.com/torrents/lmde-5-cinnamon-64bit.iso.torrent"
         dl = aria2.add_uris([link], {'dir': DOWNLOAD_DIR.rstrip("/")})
         for _ in range(4):
@@ -504,11 +508,11 @@ def aria2c_init():
             if dl.followed_by_ids:
                 dl = dl.api.get_download(dl.followed_by_ids[0])
                 dl = dl.live
-            sleep(8)
+            sleep(3)
         if dl.remove(True, True):
-            info('Aria2c initializing finished')
+            info('Aria2c started!')
     except Exception as e:
-        error(f"Aria2c initializing error: {e}")
+        error(f"Aria2c startup error: {e}")
 
 Thread(target=aria2c_init).start()
 sleep(1.5)
@@ -540,10 +544,11 @@ else:
         if v in ["", "*"]:
             del qb_opt[k]
     qb_client.app_set_preferences(qb_opt)
+info('qBittorrent-Nox started!')
+
 
 info("Creating client from BOT_TOKEN")
-bot = tgClient('bot', TELEGRAM_API, TELEGRAM_HASH, bot_token=BOT_TOKEN, parse_mode=enums.ParseMode.HTML)
-bot.start()
+bot = tgClient('bot', TELEGRAM_API, TELEGRAM_HASH, bot_token=BOT_TOKEN, parse_mode=enums.ParseMode.HTML).start()
 bot_loop = bot.loop
 bot_name = bot.me.username
 scheduler = AsyncIOScheduler(timezone=str(get_localzone()), event_loop=bot_loop)

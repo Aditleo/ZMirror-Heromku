@@ -2,7 +2,7 @@ from asyncio import create_subprocess_exec
 from os import execl as osexecl
 from signal import SIGINT, signal
 from sys import executable
-from time import time
+from time import time, sleep
 
 from aiofiles import open as aiopen
 from aiofiles.os import path as aiopath
@@ -27,7 +27,7 @@ from .helper.telegram_helper.message_utils import (editMessage, sendFile,
                                                    sendMessage)
 from .modules import (anonymous, authorize, bot_settings, bt_select,
                       cancel_mirror, category_select, count, delete,
-                      drive_list, eval, mirror_leech, mirror_status, rmdb, rss,
+                      drive_list, eval, mirror_leech, status, rmdb, rss,
                       search, shell, users_settings, ytdlp)
 
 def progress_bar(percentage):
@@ -121,7 +121,7 @@ async def ping(client, message):
     await editMessage(reply, f'{end_time - start_time} ms')
 
 async def log(client, message):
-    await sendFile(message, 'log.txt')
+    await sendFile(message, 'Z_Logs.txt')
 
 help_string = f'''
 NOTE: Try each command without any argument to see more detalis.
@@ -145,8 +145,8 @@ NOTE: Try each command without any argument to see more detalis.
 /{BotCommands.CountCommand} [drive_url]: Count file/folder of Google Drive.
 /{BotCommands.DeleteCommand} [drive_url]: Delete file/folder from Google Drive (Only Owner & Sudo).
 /leech{BotCommands.DeleteCommand} [telegram_link]: Delete replies from telegram (Only Owner & Sudo).
-/{BotCommands.UserSetCommand} [query]: Users settings.
-/{BotCommands.BotSetCommand} [query]: Bot settings.
+/{BotCommands.UserSetCommand[0]} [query]: Users settings.
+/{BotCommands.BotSetCommand[0]} [query]: Bot settings.
 /{BotCommands.BtSelectCommand}: Select files from torrents by gid or reply.
 /{BotCommands.CategorySelect}: Change upload category for Google Drive.
 /{BotCommands.CancelMirror} : Cancel task by gid or reply.
@@ -156,8 +156,8 @@ NOTE: Try each command without any argument to see more detalis.
 /{BotCommands.StatusCommand[0]} or /{BotCommands.StatusCommand[1]}: Shows a status of all the downloads.
 /{BotCommands.StatsCommand[0]} or /{BotCommands.StatsCommand[1]}: Show stats of the machine where the bot is hosted in.
 /{BotCommands.PingCommand[0]} or /{BotCommands.PingCommand[1]}: Check how long it takes to Ping the Bot (Only Owner & Sudo).
-/{BotCommands.AuthorizeCommand}: Authorize a chat or a user to use the bot (Only Owner & Sudo).
-/{BotCommands.UnAuthorizeCommand}: Unauthorize a chat or a user to use the bot (Only Owner & Sudo).
+/{BotCommands.AuthorizeCommand[0]}: Authorize a chat or a user to use the bot (Only Owner & Sudo).
+/{BotCommands.UnAuthorizeCommand[0]}: Unauthorize a chat or a user to use the bot (Only Owner & Sudo).
 /{BotCommands.UsersCommand}: show users settings (Only Owner & Sudo).
 /{BotCommands.AddSudoCommand}: Add sudo user (Only Owner).
 /{BotCommands.RmSudoCommand}: Remove sudo users (Only Owner).
@@ -237,6 +237,7 @@ async def main():
     bot.add_handler(MessageHandler(ping, filters=command(BotCommands.PingCommand)))
     bot.add_handler(MessageHandler(bot_help, filters=command(BotCommands.HelpCommand)))
     bot.add_handler(MessageHandler(stats, filters=command(BotCommands.StatsCommand)))
+    sleep(1)
     LOGGER.info("Bot Started Successfully!")
     signal(SIGINT, exit_clean_up)
 

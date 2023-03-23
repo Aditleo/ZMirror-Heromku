@@ -31,7 +31,7 @@ async def __onDownloadStarted(api, gid):
                 while True:
                     await sleep(0.5)
                     if download.is_removed or download.followed_by_ids:
-                        await deleteMessage(listener.message, meta)
+                        await deleteMessage(meta)
                         break
                     download = download.live
         return
@@ -88,12 +88,6 @@ async def __onDownloadStarted(api, gid):
                         break
             size = download.total_length
             limit_exceeded = ''
-            if not limit_exceeded and STORAGE_THRESHOLD:
-                limit = STORAGE_THRESHOLD * 1024**3
-                arch = any([listener.isZip, listener.extract])
-                acpt = await sync_to_async(check_storage_threshold, size, limit, arch, True)
-                if not acpt:
-                    limit_exceeded = f'You must leave {get_readable_file_size(limit)} free storage.'
             if not limit_exceeded and DIRECT_LIMIT and not download.is_torrent:
                 limit = DIRECT_LIMIT * 1024**3
                 if size > limit:
@@ -106,6 +100,12 @@ async def __onDownloadStarted(api, gid):
                 limit = LEECH_LIMIT * 1024**3
                 if size > limit:
                     limit_exceeded = f'Leech limit is {get_readable_file_size(limit)}'
+            if not limit_exceeded and STORAGE_THRESHOLD:
+                limit = STORAGE_THRESHOLD * 1024**3
+                arch = any([listener.isZip, listener.extract])
+                acpt = await sync_to_async(check_storage_threshold, size, limit, arch, True)
+                if not acpt:
+                    limit_exceeded = f'You must leave {get_readable_file_size(limit)} free storage.'
             if limit_exceeded:
                 await listener.onDownloadError(f'{limit_exceeded}.\nYour File/Folder size is {get_readable_file_size(size)}')
                 await delete_links(listener.message)
@@ -241,11 +241,17 @@ async def add_aria2c_download(link, path, listener, filename, auth, ratio, seed_
         error = str(download.error_message).replace('<', ' ').replace('>', ' ')
         LOGGER.info(f"Download Error: {error}")
         return await sendMessage(listener.message, error)
+    gid = download.gid
     async with download_dict_lock:
-        download_dict[listener.uid] = AriaDownloadStatus(download.gid, listener)
-        LOGGER.info(f"Aria2Download started: {download.gid}")
+        download_dict[listener.uid] = AriaDownloadStatus(gid, listener)
+        LOGGER.info(f"Aria2Download started: {gid}")
     await listener.onDownloadStart()
-    if not listener.select:
+    if not listener.select or not config_dict['BASE_URL']:
         await sendStatusMessage(listener.message)
+    elif download.is_torrent and not download.is_metadata:
+        await sync_to_async(aria2.client.force_pause, gid)
+        SBUTTONS = bt_selection_buttons(gid)
+        msg = "Your download paused. Choose files then press Done Selecting button to start downloading."
+        await sendMessage(listener.message, msg, SBUTTONS)
 
 start_listener()

@@ -13,7 +13,7 @@ from psutil import cpu_percent, disk_usage, virtual_memory
 from pyrogram.types import BotCommand
 from requests import head as rhead
 
-from bot import (DOWNLOAD_DIR, bot_loop, botStartTime, config_dict,
+from bot import (DOWNLOAD_DIR, LOGGER, bot_loop, botStartTime, config_dict,
                  download_dict, download_dict_lock, extra_buttons, user_data)
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.button_build import ButtonMaker
@@ -80,7 +80,7 @@ async def getDownloadByGid(gid):
                 return dl
     return None
 
-async def getAllDownload(req_status: str, user_id: int = None, onece: bool = True):
+async def getAllDownload(req_status, user_id=None, onece=True):
     dls = []
     async with download_dict_lock:
         for dl in list(download_dict.values()):
@@ -94,7 +94,7 @@ async def getAllDownload(req_status: str, user_id: int = None, onece: bool = Tru
                     dls.append(dl)
     return None if onece else dls
 
-def bt_selection_buttons(id_: str, isCanCncl: bool = True):
+def bt_selection_buttons(id_, isCanCncl=True):
     gid = id_[:12] if len(id_) > 20 else id_
     pincode = ""
     for n in id_:
@@ -136,7 +136,7 @@ def get_readable_message():
                 globals()['PAGE_NO'] -= 1
         for index, download in enumerate(list(download_dict.values())[COUNT:], start=1):
             if config_dict['DM_MODE']:
-                msg += f"Hey <b><i><u>{download.message.from_user.username}</u></i></b>, \
+                msg += f"Hey <a href='https://telegram.me/{download.message.from_user.username}'><b><i><u>{download.message.from_user.username}</u></i></b></a>, \
 Please wait!\n<b>{download.status()}</b> Your Task [<a href='{download.message.link}'>{download.mode}</a>]"
             else:
                 msg += f'\n<b>{download.status()}:</b> <code>{escape(str(download.name()))}</code>'
@@ -157,8 +157,14 @@ Please wait!\n<b>{download.status()}</b> Your Task [<a href='{download.message.l
                     msg += f"\n<b>Splitted:</b> <code>{get_readable_file_size(download.processed_bytes())}</code> of <code>{download.size()}</code>"
                 msg += f"\n<b>Speed</b>: <code>{download.speed()}</code> | <b>Elapsed:</b> <code>{get_readable_time(time() - download.startTime)}</code>"
                 msg += f"\n<b>ETA</b>: <code>{download.eta()}</code> | <b>Eng</b>: <code>{download.engine}</code>"
+                if hasattr(download, 'playList'):
+                    try:
+                        if playlist:=download.playList():
+                            msg += f"\n<b>Playlist Downloaded</b>: {playlist}"
+                    except:
+                        pass
                 if not config_dict['DM_MODE']:
-                    msg += f"\n<b>Task</b>: <a href='{download.message.link}'>{download.mode}</a> | <b>By</b>: {download.source}"
+                    msg += f"\n<b>Task</b>: <a href='https://telegram.me/{download.message.from_user.username}'>{download.mode}</a> | <b>By</b>: {download.source}"
                 if hasattr(download, 'seeders_num'):
                     try:
                         msg += f"\n<b>Seeders</b>: {download.seeders_num()} | <b>Leechers</b>: {download.leechers_num()}"
@@ -172,13 +178,7 @@ Please wait!\n<b>{download.status()}</b> Your Task [<a href='{download.message.l
                 msg += f" | <b>Time</b>: {download.seeding_time()}"
             else:
                 msg += f"\n<b>Size</b>: {download.size()}"
-            if hasattr(download, 'playList'):
-                try:
-                    if playlist:=download.playList():
-                        msg += f"\n<b>Playlist</b>: {playlist}"
-                except:
-                    pass
-            msg += f"\n⚠️ <code>/{BotCommands.CancelMirror} {download.gid()}</code>\n\n"
+            msg += f"\n⚠️ <code>/{BotCommands.CancelMirror[0]} {download.gid()}</code>\n\n"
             if STATUS_LIMIT and index == STATUS_LIMIT:
                 break
         if len(msg) == 0:
@@ -329,7 +329,10 @@ async def cmd_exec(cmd, shell=False):
 def new_task(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        return bot_loop.create_task(func(*args, **kwargs))
+        try:
+            return bot_loop.create_task(func(*args, **kwargs))
+        except Exception as e:
+            LOGGER.error(f"Failed to create task for {func.__name__} : {e}")
     return wrapper
 
 async def sync_to_async(func, *args, wait=True, **kwargs):
@@ -357,13 +360,11 @@ async def set_commands(client):
         BotCommand(f'{BotCommands.LeechCommand[0]}', f'or /{BotCommands.LeechCommand[1]} Leech'),
         BotCommand(f'{BotCommands.ZipMirrorCommand[0]}', f'or /{BotCommands.ZipMirrorCommand[1]} Mirror and upload as zip'),
         BotCommand(f'{BotCommands.ZipLeechCommand[0]}', f'or /{BotCommands.ZipLeechCommand[1]} Leech and upload as zip'),
-        BotCommand(f'{BotCommands.UnzipMirrorCommand[0]}', f'or /{BotCommands.UnzipMirrorCommand[1]} Mirror and extract files'),
         BotCommand(f'{BotCommands.UnzipLeechCommand[0]}', f'or /{BotCommands.UnzipLeechCommand[1]} Leech and extract files'),
         BotCommand(f'{BotCommands.QbMirrorCommand[0]}', f'or /{BotCommands.QbMirrorCommand[1]} Mirror torrent using qBittorrent'),
         BotCommand(f'{BotCommands.QbLeechCommand[0]}', f'or /{BotCommands.QbLeechCommand[1]} Leech torrent using qBittorrent'),
         BotCommand(f'{BotCommands.QbZipMirrorCommand[0]}', f'or /{BotCommands.QbZipMirrorCommand[1]} Mirror torrent and upload as zip using qb'),
         BotCommand(f'{BotCommands.QbZipLeechCommand[0]}', f'or /{BotCommands.QbZipLeechCommand[1]} Leech torrent and upload as zip using qb'),
-        BotCommand(f'{BotCommands.QbUnzipMirrorCommand[0]}', f'or /{BotCommands.QbUnzipMirrorCommand[1]} Mirror torrent and extract files using qb'),
         BotCommand(f'{BotCommands.QbUnzipLeechCommand[0]}', f'or /{BotCommands.QbUnzipLeechCommand[1]} Leech torrent and extract using qb'),
         BotCommand(f'{BotCommands.YtdlCommand[0]}', f'or /{BotCommands.YtdlCommand[1]} Mirror yt-dlp supported link'),
         BotCommand(f'{BotCommands.YtdlLeechCommand[0]}', f'or /{BotCommands.YtdlLeechCommand[1]} Leech through yt-dlp supported link'),
@@ -379,6 +380,6 @@ async def set_commands(client):
         BotCommand(f'{BotCommands.CancelAllCommand[0]}', f'Cancel all tasks which added by you or {BotCommands.CancelAllCommand[1]} to in bots.'),
         BotCommand(f'{BotCommands.ListCommand}', 'Search in Drive'),
         BotCommand(f'{BotCommands.SearchCommand}', 'Search in Torrent'),
-        BotCommand(f'{BotCommands.UserSetCommand}', 'Users settings'),
+        BotCommand(f'{BotCommands.UserSetCommand[0]}', 'Users settings'),
         BotCommand(f'{BotCommands.HelpCommand}', 'Get detailed help'),
             ])
