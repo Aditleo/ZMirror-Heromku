@@ -149,7 +149,7 @@ NOTE: Try each command without any argument to see more detalis.
 /{BotCommands.BotSetCommand[0]} [query]: Bot settings.
 /{BotCommands.BtSelectCommand}: Select files from torrents by gid or reply.
 /{BotCommands.CategorySelect}: Change upload category for Google Drive.
-/{BotCommands.CancelMirror} : Cancel task by gid or reply.
+/{BotCommands.CancelMirror[0]} : Cancel task by gid or reply.
 /{BotCommands.CancelAllCommand[0]} : Cancel all tasks which added by you {BotCommands.CancelAllCommand[1]} to in bots.
 /{BotCommands.ListCommand} [query]: Search in Google Drive(s).
 /{BotCommands.SearchCommand} [query]: Search for torrents with API.
