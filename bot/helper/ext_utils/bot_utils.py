@@ -376,7 +376,7 @@ async def set_commands(client):
         BotCommand(f'{BotCommands.StatsCommand[0]}', f'{BotCommands.StatsCommand[1]} Check bot stats'),
         BotCommand(f'{BotCommands.BtSelectCommand}', 'Select files to download only torrents'),
         BotCommand(f'{BotCommands.CategorySelect}', 'Select category to upload only mirror'),
-        BotCommand(f'{BotCommands.CancelMirror}', 'Cancel a Task'),
+        BotCommand(f'{BotCommands.CancelMirror[0]}', 'Cancel a Task'),
         BotCommand(f'{BotCommands.CancelAllCommand[0]}', f'Cancel all tasks which added by you or {BotCommands.CancelAllCommand[1]} to in bots.'),
         BotCommand(f'{BotCommands.ListCommand}', 'Search in Drive'),
         BotCommand(f'{BotCommands.SearchCommand}', 'Search in Torrent'),
