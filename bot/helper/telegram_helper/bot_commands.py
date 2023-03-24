@@ -23,7 +23,7 @@ class _BotCommands:
         self.CloneCommand = f'c{CMD_SUFFIX}'
         self.CountCommand = f'count{CMD_SUFFIX}'
         self.DeleteCommand = f'del{CMD_SUFFIX}'
-        self.CancelMirror = f'can{CMD_SUFFIX}'
+        self.CancelMirror = [f'can{CMD_SUFFIX}', f'cancel{CMD_SUFFIX}']
         self.CancelAllCommand = [f'canall{CMD_SUFFIX}', 'canallbot']
         self.ListCommand = f'list{CMD_SUFFIX}'
         self.SearchCommand = f'search{CMD_SUFFIX}'
